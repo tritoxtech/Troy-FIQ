@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Troy FIQ · TritoX QC</title><script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Troy FIQ · TritoX QC · Updated Rules</title><script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script><style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 :root{
   --bg:#080a0f;--surface:#111520;--surface2:#171c2c;--surface3:#1e2438;
@@ -328,15 +328,27 @@ function analyze(t,filename){
  dateCheck(auto,'Auto');const farmers=!/Bristol\s+West\s+Auto\s+quote/i.test(auto);const carrier=farmers?'Farmers':'Bristol West';
  add(money(field(auto,/\bMedical\b/i))===5000,'Auto Medical','$5,000',field(auto,/\bMedical\b/i));
  if(farmers){const um=field(auto,/Uninsured\s+motorist\s*(?:[-–—]\s*)?property\s+damage/i);add(selected(um),'UM Property Damage','Coverage included',um||'Not found');add(!/Signal\s+by\s+Farmers/i.test(auto),'Signal by Farmers','Removed');}
- const d=discounts(auto);for(const [label,rx] of [['Paperless',/Paperless/i],['Mail Farmers ID',/Mail\s+Farmers\s+(?:ID|I\.D\.|identification)/i],['Homeowner',/Homeowner/i],['Auto/Life',/Auto\s*\/\s*Life/i],['Auto/Home',/Auto\s*\/\s*(?:Farmers\s+)?Home/i]])add(rx.test(d),'Auto discount: '+label,'Included',rx.test(d)?label:'Not found');
+ const d=discounts(auto);for(const [label,rx] of [['Paperless',/Paperless/i],['Homeowner',/Homeowner/i],['Auto/Life',/Auto\s*\/\s*Life/i],['Auto/Home',/Auto\s*\/\s*(?:Farmers\s+)?Home/i]])add(rx.test(d),'Auto discount: '+label,'Included',rx.test(d)?label:'Not found');
  vehicles=extractVehicles(auto);if(!vehicles.length)add(false,'Vehicles','Detect every vehicle','No vehicles detected',true);
  const heads=[...auto.matchAll(/(?:^|\n)[ \t]*((?:19|20)\d{2})[ \t]+([^\n]{3,120}?)(?:[ \t]*\(VIN\b[^\n]*\)|[ \t]*(?=\n\s*Coverage\b))/gi)];
  for(const v of vehicles){const modelKey=s=>s.toLowerCase().replace(/\.{2,}|…/g,'').replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/).slice(0,2).join(' ');const short=modelKey(v.model);const h=heads.find(x=>+x[1]===v.year&&modelKey(x[2])===short);let section='';if(h){const end=heads.find(x=>x.index>h.index)?.index??auto.length;section=auto.slice(h.index,end);}const title=v.year+' '+v.model;
  const required=year!==null&&year-v.year<=15;if(year===null)add(false,title+' Vehicle age','Rule year from PDF Prepared on date','Date not found',true);const cv=field(section,/\bComprehensive\b/i),cl=field(section,/\bCollision\b/i);const comp=money(cv)??(v.compVal==null?null:Number(v.compVal)),coll=money(cl)??(v.collVal==null?null:Number(v.collVal));
  if(required||comp!==null)add(comp===1000,title+' Comprehensive','$1,000'+(required?' (15 years or newer)':''),comp===null?'Missing':'$'+comp);
  if(required||coll!==null)add(coll===1000,title+' Collision','$1,000'+(required?' (15 years or newer)':''),coll===null?'Missing':'$'+coll);
- const tow=field(section,/(?:Towing\s*(?:and|&)\s*Road\s*Service|Towing\s*(?:and|&)\s*Labor|Roadside\s+assistance)/i);add(selected(tow)&&(farmers?/\bIncluded\b/i:/\bYes\b/i).test(tow),title+' Towing / Road Service',farmers?'Included':'Yes',tow||'Not found');
- if(comp!==null&&coll!==null){const rental=field(section,/Rental\s+(?:reimbursement(?:\s+coverage)?|coverage)/i);const amount=money(rental);add(selected(rental)&&amount===30,title+' Rental Reimbursement','$30',rental||'Not found');}
+ // Roadside / Towing:
+ // Farmers: Towing / Road Service = Yes
+ // Bristol West: Roadside Assistance = Yes
+ const tow=field(section,/(?:Towing\s*(?:and|&)\s*Road\s*Service|Towing\s*(?:and|&)\s*Labor|Towing\s*\/\s*Road\s*Service|Roadside\s+assistance)/i);
+ add(selected(tow)&&/^Yes\b/i.test(tow),title+(farmers?' Towing / Road Service':' Roadside Assistance'),'Yes',tow||'Not found');
+
+ // Rental reimbursement = $30 per day whenever Comprehensive OR Collision
+ // is carried/applicable on that vehicle.
+ const physicalDamageApplicable=(comp!==null||coll!==null);
+ if(physicalDamageApplicable){
+   const rental=field(section,/Rental\s+(?:reimbursement(?:\s+coverage)?|coverage)/i);
+   const amount=money(rental);
+   add(selected(rental)&&amount===30,title+' Rental Reimbursement','$30 per day',rental||'Not found');
+ }
  }
  }}
  if(type==='Home'||type==='Bundle'){

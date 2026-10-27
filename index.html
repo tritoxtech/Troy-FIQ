@@ -331,12 +331,29 @@ function analyze(t,filename){
  const d=discounts(auto);for(const [label,rx] of [['Paperless',/Paperless/i],['Homeowner',/Homeowner/i],['Auto/Life',/Auto\s*\/\s*Life/i],['Auto/Home',/Auto\s*\/\s*(?:Farmers\s+)?Home/i]])add(rx.test(d),'Auto discount: '+label,'Included',rx.test(d)?label:'Not found');
  vehicles=extractVehicles(auto);if(!vehicles.length)add(false,'Vehicles','Detect every vehicle','No vehicles detected',true);
  const heads=[...auto.matchAll(/(?:^|\n)[ \t]*((?:19|20)\d{2})[ \t]+([^\n]{3,120}?)(?:[ \t]*\(VIN\b[^\n]*\)|[ \t]*(?=\n\s*Coverage\b))/gi)];
- for(const v of vehicles){const modelKey=s=>s.toLowerCase().replace(/\.{2,}|…/g,'').replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/).slice(0,2).join(' ');const short=modelKey(v.model);const h=heads.find(x=>+x[1]===v.year&&modelKey(x[2])===short);let section='';if(h){const end=heads.find(x=>x.index>h.index)?.index??auto.length;section=auto.slice(h.index,end);}const title=v.year+' '+v.model;
+ for(const v of vehicles){const modelKey=s=>s.toLowerCase().replace(/\.{2,}|…/g,'').replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/).slice(0,2).join(' ');const short=modelKey(v.model);const h=heads.find(x=>+x[1]===v.year&&(modelKey(x[2])===short||modelKey(x[2]).startsWith(short)||short.startsWith(modelKey(x[2]))));let section='';if(h){const end=heads.find(x=>x.index>h.index)?.index??auto.length;section=auto.slice(h.index,end);}
+ // Fallback: PDF text extraction sometimes breaks the VIN/header layout, so locate
+ // the vehicle by its year + make/model in the detailed Vehicles block instead.
+ if(!section){
+   const detailedStart=auto.search(/(?:^|\n)\s*Vehicles\s*(?:\n|$)/i);
+   const detail= detailedStart>=0?auto.slice(detailedStart):auto;
+   const vehicleRx=/(?:^|\n)\s*((?:19|20)\d{2})\s+([^\n]{3,140})/gi;
+   const matches=[...detail.matchAll(vehicleRx)].filter(m=>/\b(?:19|20)\d{2}\s+[A-Za-z]/.test(m[0]));
+   const candidate=matches.find(m=>+m[1]===v.year&&(modelKey(m[2])===short||modelKey(m[2]).startsWith(short)));
+   if(candidate){
+     const following=matches.find(m=>m.index>candidate.index);
+     let end=following?following.index:detail.length;
+     const footer=detail.slice(candidate.index).search(/\n\s*(?:Drivers|Discounts\s*\/\s*Preferences|Payment plans|Applied discounts)\b/i);
+     if(footer>=0)end=Math.min(end,candidate.index+footer);
+     section=detail.slice(candidate.index,end);
+   }
+ }
+ const title=v.year+' '+v.model;
  const required=year!==null&&year-v.year<=15;if(year===null)add(false,title+' Vehicle age','Rule year from PDF Prepared on date','Date not found',true);const cv=field(section,/\bComprehensive\b/i),cl=field(section,/\bCollision\b/i);const comp=money(cv)??(v.compVal==null?null:Number(v.compVal)),coll=money(cl)??(v.collVal==null?null:Number(v.collVal));
  if(required||comp!==null)add(comp===1000,title+' Comprehensive','$1,000'+(required?' (15 years or newer)':''),comp===null?'Missing':'$'+comp);
  if(required||coll!==null)add(coll===1000,title+' Collision','$1,000'+(required?' (15 years or newer)':''),coll===null?'Missing':'$'+coll);
  const tow=field(section,/(?:Towing\s*(?:and|&)\s*Road\s*Service|Towing\s*(?:and|&)\s*Labor|Towing\s*\/\s*Road\s*Service|Roadside\s+assistance)/i);
- add(selected(tow)&&(farmers?/^Included\b/i:/^Yes\b/i).test(tow),title+(farmers?' Towing / Road Service':' Roadside Assistance'),farmers?'Included':'Yes',tow||'Not found');
+ add(selected(tow)&&/^(?:Included|Yes|Standard)\b/i.test(tow),title+(farmers?' Towing / Road Service':' Roadside Assistance'),farmers?'Included':'Yes / Included',tow||'Not found');
  if(comp!==null||coll!==null){
    const rental=field(section,/Rental\s+(?:reimbursement(?:\s+coverage)?|coverage)/i);
    const amount=money(rental);
